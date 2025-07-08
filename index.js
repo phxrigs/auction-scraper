@@ -38,28 +38,33 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   const page = await browser.newPage();
   const updates = [];
 
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i][0];
-    if (!url || !url.startsWith('http')) continue;
+for (let i = 0; i < urls.length; i++) {
+  const url = urls[i][0];
+  if (!url || !url.startsWith('http')) continue;
 
-    try {
-      await page.goto(url, { waitUntil: 'networkidle2' });
+  console.log(`🔍 Visiting row ${i + 2}: ${url}`);
+  const start = Date.now();
 
-      const bidSelector = '.item-detail-current-bid span[data-currency]';
-      await page.waitForSelector(bidSelector, { timeout: 5000 });
-      const bid = await page.$eval(bidSelector, el => el.textContent.trim());
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-      console.log(`Row ${i + 2}: 💰 ${bid}`);
+    const bidSelector = '.item-detail-current-bid span[data-currency]';
+    await page.waitForSelector(bidSelector, { timeout: 1500 }); // faster timeout
 
-      updates.push({
-        range: `${sheetName}!Q${i + 2}`,
-        values: [[bid]],
-      });
+    const bid = await page.$eval(bidSelector, el => el.textContent.trim());
 
-    } catch (err) {
-      console.warn(`⚠️ Row ${i + 2}: Failed to scrape ${url} — ${err.message}`);
-    }
+    console.log(`✅ Row ${i + 2}: 💰 ${bid} (took ${Date.now() - start}ms)`);
+
+    updates.push({
+      range: `${sheetName}!Q${i + 2}`,
+      values: [[bid]],
+    });
+
+  } catch (err) {
+    console.warn(`⚠️ Row ${i + 2}: Failed to scrape ${url} — ${err.message} (after ${Date.now() - start}ms)`);
   }
+}
+
 
   await browser.close();
 
