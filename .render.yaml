@@ -1,0 +1,11 @@
+services:
+  - type: cron
+    name: auction-scraper
+    env: node
+    plan: free
+    schedule: "*/15 * * * *"
+    buildCommand: "npm install"
+    startCommand: "node index.js"
+    envVars:
+      - key: GOOGLE_CREDENTIALS
+        sync: false
