@@ -18,8 +18,16 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Clean node_modules
+        run: rm -rf node_modules
+
       - name: Install dependencies
         run: npm install
+
+      - name: Debug Puppeteer path
+        run: |
+          node -e "console.log('Puppeteer version:', require('puppeteer/package.json').version)"
+          node -e "console.log('Executable path:', require('puppeteer').executablePath?.())"
 
       - name: Run scraper
         env:
