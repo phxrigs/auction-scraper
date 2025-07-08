@@ -20,14 +20,23 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   const spreadsheetId = '1CypDOy2PseT9FPz9cyz1JdFhsUmyfnrMGKSmJ2V0fe0'; // Replace with your actual ID
   const sheetName = 'InHunt';
 
-  // Read column M (auction URLs)
-  const readRange = `${sheetName}!M2:M`;
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: readRange,
-  });
+  // Step 1: Read column A to determine how many rows to process
+const idRange = `${sheetName}!A2:A`;
+const idRes = await sheets.spreadsheets.values.get({
+  spreadsheetId,
+  range: idRange,
+});
+const rowCount = (idRes.data.values || []).length;
+console.log(`📄 Found ${rowCount} rows in column A`);
 
-  const urls = res.data.values || [];
+// Step 2: Read column M (auction URLs) up to that row count
+const readRange = `${sheetName}!M2:M${rowCount + 1}`;
+const res = await sheets.spreadsheets.values.get({
+  spreadsheetId,
+  range: readRange,
+});
+const urls = res.data.values || [];
+
 
   // Launch Puppeteer with GitHub Actions–safe flags
   const browser = await puppeteer.launch({
