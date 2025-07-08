@@ -29,13 +29,13 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
 
   const urls = res.data.values || [];
 
+  // Launch Puppeteer with GitHub Actions–safe flags
   const browser = await puppeteer.launch({
-  headless: true,
-  executablePath: puppeteer.executablePath()
-});
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  });
 
   const page = await browser.newPage();
-
   const updates = [];
 
   for (let i = 0; i < urls.length; i++) {
@@ -75,4 +75,6 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   } else {
     console.log('ℹ️ No updates to apply.');
   }
-})();"// trigger redeploy" 
+})();
+
+// trigger redeploy
