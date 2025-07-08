@@ -1,3 +1,4 @@
 #!/bin/bash
 npm install
-npx puppeteer browsers install chrome
+echo "Installing Chromium via Puppeteer..."
+npx --yes puppeteer install
