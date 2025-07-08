@@ -29,7 +29,11 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
 
   const urls = res.data.values || [];
 
-  const browser = await puppeteer.launch();
+  const browser = await puppeteer.launch({
+  headless: true,
+  executablePath: puppeteer.executablePath()
+});
+
   const page = await browser.newPage();
 
   const updates = [];
