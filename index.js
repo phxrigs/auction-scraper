@@ -17,63 +17,73 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   await auth.authorize();
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const spreadsheetId = '1CypDOy2PseT9FPz9cyz1JdFhsUmyfnrMGKSmJ2V0fe0'; // Replace with your actual ID
+  const spreadsheetId = '1CypDOy2PseT9FPz9cyz1JdFhsUmyfnrMGKSmJ2V0fe0';
   const sheetName = 'InHunt';
 
   // Step 1: Read column A to determine how many rows to process
-const idRange = `${sheetName}!A2:A`;
-const idRes = await sheets.spreadsheets.values.get({
-  spreadsheetId,
-  range: idRange,
-});
-const rowCount = (idRes.data.values || []).length;
-console.log(`📄 Found ${rowCount} rows in column A`);
+  const idRange = `${sheetName}!A2:A`;
+  const idRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: idRange,
+  });
+  const rowCount = (idRes.data.values || []).length;
+  console.log(`📄 Found ${rowCount} rows in column A`);
 
-// Step 2: Read column M (auction URLs) up to that row count
-const readRange = `${sheetName}!M2:M${rowCount + 1}`;
-const res = await sheets.spreadsheets.values.get({
-  spreadsheetId,
-  range: readRange,
-});
-const urls = res.data.values || [];
+  // Step 2: Read column M (auction URLs) up to that row count
+  const readRange = `${sheetName}!M2:M${rowCount + 1}`;
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: readRange,
+  });
+  const urls = res.data.values || [];
 
-
-  // Launch Puppeteer with GitHub Actions–safe flags
+  // Launch Puppeteer
   const browser = await puppeteer.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
   });
 
-  const page = await browser.newPage();
+  const BATCH_SIZE = 5;
   const updates = [];
 
-for (let i = 0; i < urls.length; i++) {
-  const url = urls[i][0];
-  if (!url || !url.startsWith('http')) continue;
+  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
+    const batch = urls.slice(i, i + BATCH_SIZE);
 
-  console.log(`🔍 Visiting row ${i + 2}: ${url}`);
-  const start = Date.now();
+    const results = await Promise.all(batch.map(async (row, index) => {
+      const rowIndex = i + index + 2; // +2 to match sheet row numbers
+      const url = row[0];
+      if (!url || url.trim() === '') {
+        console.log(`⏭️ Skipping row ${rowIndex}: empty URL`);
+        return null;
+      }
 
-  try {
-    await page.goto(url, { waitUntil: 'domcontentloaded' });
+      const page = await browser.newPage();
+      const start = Date.now();
 
-    const bidSelector = '.item-detail-current-bid span[data-currency]';
-    await page.waitForSelector(bidSelector, { timeout: 1500 }); // faster timeout
+      try {
+        console.log(`🔍 Visiting row ${rowIndex}: ${url}`);
+        await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-    const bid = await page.$eval(bidSelector, el => el.textContent.trim());
+        const bidSelector = '.item-detail-current-bid span[data-currency]';
+        await page.waitForSelector(bidSelector, { timeout: 1500 });
 
-    console.log(`✅ Row ${i + 2}: 💰 ${bid} (took ${Date.now() - start}ms)`);
+        const bid = await page.$eval(bidSelector, el => el.textContent.trim());
+        console.log(`✅ Row ${rowIndex}: 💰 ${bid} (took ${Date.now() - start}ms)`);
 
-    updates.push({
-      range: `${sheetName}!Q${i + 2}`,
-      values: [[bid]],
-    });
+        return {
+          range: `${sheetName}!Q${rowIndex}`,
+          values: [[bid]],
+        };
+      } catch (err) {
+        console.warn(`⚠️ Row ${rowIndex}: Failed to scrape ${url} — ${err.message} (after ${Date.now() - start}ms)`);
+        return null;
+      } finally {
+        await page.close();
+      }
+    }));
 
-  } catch (err) {
-    console.warn(`⚠️ Row ${i + 2}: Failed to scrape ${url} — ${err.message} (after ${Date.now() - start}ms)`);
+    updates.push(...results.filter(r => r));
   }
-}
-
 
   await browser.close();
 
@@ -90,5 +100,3 @@ for (let i = 0; i < urls.length; i++) {
     console.log('ℹ️ No updates to apply.');
   }
 })();
-
-// trigger redeploy
