@@ -34,4 +34,5 @@ jobs:
           node -e "console.log('Executable path:', require('puppeteer').executablePath?.())"
 
       - name: Run scraper
-        run: node index.js
+        run: echo "Triggered at $(date -u)" | tee run-log.txt
+
