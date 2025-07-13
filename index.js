@@ -20,22 +20,16 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   const spreadsheetId = '1CypDOy2PseT9FPz9cyz1JdFhsUmyfnrMGKSmJ2V0fe0';
   const sheetName = 'InHunt';
 
-  // Step 1: Read column A to determine how many rows to process
+  // Step 1: Read column A to determine row count
   const idRange = `${sheetName}!A2:A`;
-  const idRes = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: idRange,
-  });
+  const idRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: idRange });
   const rowCount = (idRes.data.values || []).length;
   console.log(`📄 Found ${rowCount} rows in column A`);
 
-  // Step 2: Read column M (auction URLs) up to that row count
-  const readRange = `${sheetName}!M2:M${rowCount + 1}`;
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: readRange,
-  });
-  const urls = res.data.values || [];
+  // Step 2: Read column T (URLs) up to that row count
+  const urlRange = `${sheetName}!T2:T${rowCount + 1}`;
+  const urlRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: urlRange });
+  const urls = urlRes.data.values || [];
 
   // Launch Puppeteer
   const browser = await puppeteer.launch({
@@ -50,7 +44,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
     const batch = urls.slice(i, i + BATCH_SIZE);
 
     const results = await Promise.all(batch.map(async (row, index) => {
-      const rowIndex = i + index + 2; // +2 to match sheet row numbers
+      const rowIndex = i + index + 2; // +2 to match sheet rows
       const url = row[0];
       if (!url || url.trim() === '') {
         console.log(`⏭️ Skipping row ${rowIndex}: empty URL`);
@@ -71,7 +65,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
         console.log(`✅ Row ${rowIndex}: 💰 ${bid} (took ${Date.now() - start}ms)`);
 
         return {
-          range: `${sheetName}!Q${rowIndex}`,
+          range: `${sheetName}!V${rowIndex}`, // 💰 Column V for Price
           values: [[bid]],
         };
       } catch (err) {
@@ -95,7 +89,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
         data: updates,
       },
     });
-    console.log('✅ All bids written to column Q.');
+    console.log('✅ All bids written to column V.');
   } else {
     console.log('ℹ️ No updates to apply.');
   }
