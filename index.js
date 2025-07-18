@@ -1,7 +1,15 @@
+/**
+ * Auction Scraper - v2025.07.18-image-fallback-logging
+ * ✔️ Extracts bid price from column T URLs
+ * ✔️ Captures first image from .fotorama__img or .product-image img
+ * ✔️ Writes to column V (price) and column AC (thumbnail) in Google Sheets
+ * ✔️ Includes verbose row-by-row logging for diagnostics
+ */
+
 const puppeteer = require('puppeteer');
 const { google } = require('googleapis');
+require('dotenv').config(); // 🔄 Loads GOOGLE_CREDENTIALS from .env
 
-// 🔐 Secure credentials via environment
 const keys = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 keys.private_key = keys.private_key.replace(/\\n/g, '\n');
 
@@ -63,13 +71,11 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           await page.waitForSelector(bidSelector, { timeout: 2000 });
           const bid = await page.$eval(bidSelector, el => el.textContent.trim());
 
-          // 🖼️ Try primary selector first
           let imageUrls = await page.$$eval(
             '.fotorama__stage__shaft img.fotorama__img',
             imgs => imgs.map(img => img.src)
           );
 
-          // 🖼️ Fallback if primary fails
           if (imageUrls.length === 0) {
             console.log(`🔁 Row ${rowIndex}: trying fallback selector`);
             imageUrls = await page.$$eval(
@@ -78,19 +84,24 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
             );
           }
 
-          // 📷 Log results
-          if (imageUrls.length === 0) {
-            console.log(`🚫 Row ${rowIndex}: no images found`);
-          } else {
-            console.log(`🖼️ Row ${rowIndex}: first image → ${imageUrls[0]}`);
-          }
-
           const imageFormula = imageUrls[0]
             ? `=IMAGE("${imageUrls[0]}", 4, 60, 60)`
             : '';
 
           const duration = Date.now() - start;
-          console.log(`✅ Row ${rowIndex}: 💰 ${bid}, 🖼️ ${imageUrls[0] ? '✔' : '✘'} (${duration}ms)`);
+
+          // 🪵 Row-by-row diagnostics
+          console.log(`🔎 Row ${rowIndex} Summary:`);
+          console.log(`   - URL: ${url}`);
+          console.log(`   - Bid found: ${bid || '❌ None'}`);
+          console.log(`   - Images found: ${imageUrls.length}`);
+          if (imageUrls.length) {
+            console.log(`   - First image URL: ${imageUrls[0]}`);
+            console.log(`   - Thumbnail formula: ${imageFormula}`);
+          } else {
+            console.log('   - No image extracted (both selectors failed)');
+          }
+          console.log(`   - Duration: ${duration}ms\n`);
 
           return [
             { range: `${sheetName}!V${rowIndex}`, values: [[bid]] },
