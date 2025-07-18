@@ -1,14 +1,14 @@
 /**
- * Auction Scraper - v2025.07.18-image-fallback-logging
- * ✔️ Extracts bid price from column T URLs
- * ✔️ Captures first image from .fotorama__img or .product-image img
- * ✔️ Writes to column V (price) and column AC (thumbnail) in Google Sheets
- * ✔️ Includes verbose row-by-row logging for diagnostics
+ * Auction Scraper - v2025.07.18-image-wait-screenshot
+ * ✔ Extracts bid price and thumbnail image from auction pages
+ * ✔ Waits for image selectors before extraction
+ * ✔ Captures screenshot per row for inspection
+ * ✔ Logs summary for each row to aid debugging
  */
 
 const puppeteer = require('puppeteer');
 const { google } = require('googleapis');
-require('dotenv').config(); // 🔄 Loads GOOGLE_CREDENTIALS from .env
+require('dotenv').config(); // Keep dotenv enabled since it's proven in your workflow
 
 const keys = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 keys.private_key = keys.private_key.replace(/\\n/g, '\n');
@@ -71,11 +71,18 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           await page.waitForSelector(bidSelector, { timeout: 2000 });
           const bid = await page.$eval(bidSelector, el => el.textContent.trim());
 
+          // 👁️ Wait for image selectors
+          await page.waitForSelector('.fotorama__img, .product-image img', { timeout: 3000 }).catch(() => {
+            console.log(`⏳ Row ${rowIndex}: No image selector appeared in time`);
+          });
+
+          // 🖼️ Primary image extraction
           let imageUrls = await page.$$eval(
             '.fotorama__stage__shaft img.fotorama__img',
             imgs => imgs.map(img => img.src)
           );
 
+          // 🖼️ Fallback extraction
           if (imageUrls.length === 0) {
             console.log(`🔁 Row ${rowIndex}: trying fallback selector`);
             imageUrls = await page.$$eval(
@@ -84,13 +91,16 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
             );
           }
 
+          // 📸 Capture screenshot for inspection
+          await page.screenshot({ path: `row-${rowIndex}-screenshot.png` });
+
           const imageFormula = imageUrls[0]
             ? `=IMAGE("${imageUrls[0]}", 4, 60, 60)`
             : '';
 
           const duration = Date.now() - start;
 
-          // 🪵 Row-by-row diagnostics
+          // 🧾 Row summary logging
           console.log(`🔎 Row ${rowIndex} Summary:`);
           console.log(`   - URL: ${url}`);
           console.log(`   - Bid found: ${bid || '❌ None'}`);
