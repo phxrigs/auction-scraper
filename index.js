@@ -67,7 +67,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           console.log(`🌐 Row ${rowIndex}: visiting ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-          // Scroll to bottom
+          // Scroll to trigger lazy content
           await page.evaluate(() => {
             return new Promise(resolve => {
               let totalHeight = 0;
@@ -99,31 +99,28 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
             );
           }
 
-          // Inspect fallback HTML if no image
-          if (imageUrls.length === 0) {
-            const rawHTML = await page.evaluate(() => {
-              const gallery = document.querySelector('.product-image') || document.querySelector('.fotorama');
-              return gallery ? gallery.innerHTML : '📭 No relevant gallery HTML found';
+          let imageUrl = imageUrls[0] || '';
+          imageUrl = imageUrl.split('?')[0]; // Strip query params
+
+          let imageFormula = '';
+          if (imageUrl) {
+            imageFormula = `=IFERROR(IMAGE("${imageUrl}", 4, 60, 60), IMAGE("${imageUrl}"))`;
+          } else {
+            imageFormula = 'NO IMAGE FOUND';
+            await page.screenshot({ path: `row-${rowIndex}-screenshot.png` });
+            const htmlDebug = await page.evaluate(() => {
+              const el = document.querySelector('.fotorama, .product-image');
+              return el ? el.innerHTML : 'No gallery structure detected';
             });
-            console.log(`📜 Row ${rowIndex}: Gallery HTML\n${rawHTML.slice(0, 500)}...`);
+            console.log(`🧩 Row ${rowIndex}: Gallery debug HTML\n${htmlDebug.slice(0, 500)}...\n`);
           }
 
-          await page.screenshot({ path: `row-${rowIndex}-screenshot.png` });
-
-          let imageUrl = imageUrls[0] || '';
-          imageUrl = imageUrl.split('?')[0]; // remove any query params
-          const imageFormula = imageUrl
-            ? `=IMAGE("${imageUrl}", 4, 60, 60)`
-            : '';
-
           const duration = Date.now() - start;
-
           console.log(`🔎 Row ${rowIndex} Summary:`);
-          console.log(`   - URL: ${url}`);
-          console.log(`   - Bid found: ${bid || '❌ None'}`);
-          console.log(`   - Images found: ${imageUrls.length}`);
-          console.log(`   - First image URL: ${imageUrl}`);
-          console.log(`   - Thumbnail formula: ${imageFormula}`);
+          console.log(`   - Bid: ${bid}`);
+          console.log(`   - Images: ${imageUrls.length}`);
+          console.log(`   - First Image: ${imageUrl || '❌ None'}`);
+          console.log(`   - Formula: ${imageFormula}`);
           console.log(`   - Duration: ${duration}ms\n`);
 
           return [
