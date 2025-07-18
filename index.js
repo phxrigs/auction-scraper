@@ -67,7 +67,6 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           console.log(`🌐 Row ${rowIndex}: visiting ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-          // Scroll to trigger lazy content
           await page.evaluate(() => {
             return new Promise(resolve => {
               let totalHeight = 0;
@@ -100,7 +99,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           }
 
           let imageUrl = imageUrls[0] || '';
-          imageUrl = imageUrl.split('?')[0]; // Strip query params
+          imageUrl = imageUrl.split('?')[0]; // Clean query params
 
           let imageFormula = '';
           if (imageUrl) {
@@ -125,7 +124,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
 
           return [
             { range: `${sheetName}!V${rowIndex}`, values: [[bid]] },
-            { range: `${sheetName}!AC${rowIndex}`, values: [[imageFormula]] },
+            { range: `${sheetName}!AD${rowIndex}`, values: [[imageFormula]] }, // ✅ updated column
           ];
         } catch (err) {
           console.warn(`⚠️ Row ${rowIndex}: scrape error — ${err.message}`);
@@ -147,7 +146,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
-        valueInputOption: 'RAW',
+        valueInputOption: 'USER_ENTERED', // ✅ treats image formula like typed input
         data: updates,
       },
     });
@@ -156,3 +155,4 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
     console.log('ℹ️ No updates to apply');
   }
 })();
+
