@@ -1,14 +1,14 @@
 /**
- * Auction Scraper - v2025.07.18-image-wait-screenshot
- * ✔ Extracts bid price and thumbnail image from auction pages
- * ✔ Waits for image selectors before extraction
- * ✔ Captures screenshot per row for inspection
- * ✔ Logs summary for each row to aid debugging
+ * Auction Scraper - v2025.07.18-scroll-inspect-image-fallback
+ * ✔ Adds scroll detection for lazy-loaded images
+ * ✔ Logs HTML around missing selectors
+ * ✔ Captures screenshot for offline debugging
+ * ✔ Uses headless: "new" for improved rendering
  */
 
 const puppeteer = require('puppeteer');
 const { google } = require('googleapis');
-require('dotenv').config(); // Keep dotenv enabled since it's proven in your workflow
+require('dotenv').config();
 
 const keys = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 keys.private_key = keys.private_key.replace(/\\n/g, '\n');
@@ -41,7 +41,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   const urls = urlRes.data.values || [];
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'new',
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
@@ -67,22 +67,38 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           console.log(`🌐 Row ${rowIndex}: visiting ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-          const bidSelector = '.item-detail-current-bid span[data-currency]';
-          await page.waitForSelector(bidSelector, { timeout: 2000 });
-          const bid = await page.$eval(bidSelector, el => el.textContent.trim());
-
-          // 👁️ Wait for image selectors
-          await page.waitForSelector('.fotorama__img, .product-image img', { timeout: 3000 }).catch(() => {
-            console.log(`⏳ Row ${rowIndex}: No image selector appeared in time`);
+          // 🔄 Scroll down to trigger lazy loading
+          await page.evaluate(() => {
+            return new Promise(resolve => {
+              let totalHeight = 0;
+              const distance = 300;
+              const timer = setInterval(() => {
+                window.scrollBy(0, distance);
+                totalHeight += distance;
+                if (totalHeight >= document.body.scrollHeight) {
+                  clearInterval(timer);
+                  resolve();
+                }
+              }, 200);
+            });
           });
 
-          // 🖼️ Primary image extraction
+          const bidSelector = '.item-detail-current-bid span[data-currency]';
+          await page.waitForSelector(bidSelector, { timeout: 3000 });
+          const bid = await page.$eval(bidSelector, el => el.textContent.trim());
+
+          // 👁️ Wait for image selectors (optional but helpful)
+          await page.waitForSelector('.fotorama__img, .product-image img', { timeout: 3000 }).catch(() => {
+            console.log(`⏳ Row ${rowIndex}: Image selector not detected after scroll`);
+          });
+
+          // 🖼️ Primary image selector
           let imageUrls = await page.$$eval(
             '.fotorama__stage__shaft img.fotorama__img',
             imgs => imgs.map(img => img.src)
           );
 
-          // 🖼️ Fallback extraction
+          // 🖼️ Fallback selector
           if (imageUrls.length === 0) {
             console.log(`🔁 Row ${rowIndex}: trying fallback selector`);
             imageUrls = await page.$$eval(
@@ -91,7 +107,16 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
             );
           }
 
-          // 📸 Capture screenshot for inspection
+          // 🩺 If still no image, log nearby HTML
+          if (imageUrls.length === 0) {
+            const rawHTML = await page.evaluate(() => {
+              const gallery = document.querySelector('.product-image') || document.querySelector('.fotorama');
+              return gallery ? gallery.innerHTML : '📭 No relevant gallery HTML found';
+            });
+            console.log(`📜 Row ${rowIndex}: Gallery HTML fallback\n${rawHTML.slice(0, 500)}...`);
+          }
+
+          // 📸 Screenshot for visual debugging
           await page.screenshot({ path: `row-${rowIndex}-screenshot.png` });
 
           const imageFormula = imageUrls[0]
@@ -100,7 +125,6 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
 
           const duration = Date.now() - start;
 
-          // 🧾 Row summary logging
           console.log(`🔎 Row ${rowIndex} Summary:`);
           console.log(`   - URL: ${url}`);
           console.log(`   - Bid found: ${bid || '❌ None'}`);
@@ -109,7 +133,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
             console.log(`   - First image URL: ${imageUrls[0]}`);
             console.log(`   - Thumbnail formula: ${imageFormula}`);
           } else {
-            console.log('   - No image extracted (both selectors failed)');
+            console.log('   - No image extracted (all methods failed)');
           }
           console.log(`   - Duration: ${duration}ms\n`);
 
