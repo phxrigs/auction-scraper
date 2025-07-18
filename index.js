@@ -1,7 +1,7 @@
 const puppeteer = require('puppeteer');
 const { google } = require('googleapis');
 
-// 🔐 Load credentials securely from environment
+// 🔐 Secure credentials via environment
 const keys = JSON.parse(process.env.GOOGLE_CREDENTIALS);
 keys.private_key = keys.private_key.replace(/\\n/g, '\n');
 
@@ -24,9 +24,12 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
       range: `${sheetName}!A2:A`,
     })
   ).data.values?.length || 0;
+  console.log(`📘 Found ${rowCount} rows`);
 
-  const urlRange = `${sheetName}!T2:T${rowCount + 1}`;
-  const urlRes = await sheets.spreadsheets.values.get({ spreadsheetId, range: urlRange });
+  const urlRes = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${sheetName}!T2:T${rowCount + 1}`,
+  });
   const urls = urlRes.data.values || [];
 
   const browser = await puppeteer.launch({
@@ -45,7 +48,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
         const rowIndex = i + index + 2;
         const url = row[0];
         if (!url || url.trim() === '') {
-          console.log(`⏭️ Skipping row ${rowIndex}: empty URL`);
+          console.log(`⏭️ Row ${rowIndex}: empty URL`);
           return null;
         }
 
@@ -53,33 +56,48 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
         const start = Date.now();
 
         try {
-          console.log(`🔍 Visiting row ${rowIndex}: ${url}`);
+          console.log(`🌐 Row ${rowIndex}: visiting ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded' });
 
           const bidSelector = '.item-detail-current-bid span[data-currency]';
-          await page.waitForSelector(bidSelector, { timeout: 1500 });
+          await page.waitForSelector(bidSelector, { timeout: 2000 });
           const bid = await page.$eval(bidSelector, el => el.textContent.trim());
 
-          // 🖼️ Grab first product image from fotorama container
-          const imageUrl = await page.$$eval(
+          // 🖼️ Try primary selector first
+          let imageUrls = await page.$$eval(
             '.fotorama__stage__shaft img.fotorama__img',
-            imgs => (imgs.length ? imgs[0].src : '')
+            imgs => imgs.map(img => img.src)
           );
 
-          const imageFormula = imageUrl
-            ? `=IMAGE("${imageUrl}", 4, 60, 60)`
+          // 🖼️ Fallback if primary fails
+          if (imageUrls.length === 0) {
+            console.log(`🔁 Row ${rowIndex}: trying fallback selector`);
+            imageUrls = await page.$$eval(
+              '.product-image img',
+              imgs => imgs.map(img => img.src)
+            );
+          }
+
+          // 📷 Log results
+          if (imageUrls.length === 0) {
+            console.log(`🚫 Row ${rowIndex}: no images found`);
+          } else {
+            console.log(`🖼️ Row ${rowIndex}: first image → ${imageUrls[0]}`);
+          }
+
+          const imageFormula = imageUrls[0]
+            ? `=IMAGE("${imageUrls[0]}", 4, 60, 60)`
             : '';
 
-          console.log(`✅ Row ${rowIndex}: 💰 ${bid}, 🖼️ ${imageUrl ? '[image found]' : '[no image]'}`);
+          const duration = Date.now() - start;
+          console.log(`✅ Row ${rowIndex}: 💰 ${bid}, 🖼️ ${imageUrls[0] ? '✔' : '✘'} (${duration}ms)`);
 
           return [
-            { range: `${sheetName}!V${rowIndex}`, values: [[bid]] },       // 💰 Price to column V
-            { range: `${sheetName}!AC${rowIndex}`, values: [[imageFormula]] }, // 🖼️ Image to column AC
+            { range: `${sheetName}!V${rowIndex}`, values: [[bid]] },
+            { range: `${sheetName}!AC${rowIndex}`, values: [[imageFormula]] },
           ];
         } catch (err) {
-          console.warn(
-            `⚠️ Row ${rowIndex}: Failed to scrape ${url} — ${err.message} (after ${Date.now() - start}ms)`
-          );
+          console.warn(`⚠️ Row ${rowIndex}: scrape error — ${err.message}`);
           return null;
         } finally {
           await page.close();
@@ -87,8 +105,8 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
       })
     );
 
-    results.flat().forEach(r => {
-      if (r) updates.push(r);
+    results.flat().forEach(update => {
+      if (update) updates.push(update);
     });
   }
 
@@ -97,10 +115,13 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
   if (updates.length > 0) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
-      requestBody: { valueInputOption: 'RAW', data: updates },
+      requestBody: {
+        valueInputOption: 'RAW',
+        data: updates,
+      },
     });
-    console.log('✅ Bids and thumbnails written to columns V and AC.');
+    console.log(`📊 ${updates.length} updates written to sheet`);
   } else {
-    console.log('ℹ️ No updates to apply.');
+    console.log('ℹ️ No updates to apply');
   }
 })();
