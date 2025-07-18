@@ -1,9 +1,9 @@
 /**
- * Auction Scraper - v2025.07.18-scroll-inspect-image-fallback
- * ✔ Adds scroll detection for lazy-loaded images
- * ✔ Logs HTML around missing selectors
- * ✔ Captures screenshot for offline debugging
- * ✔ Uses headless: "new" for improved rendering
+ * Auction Scraper - v2025.07.18-image-load-fix
+ * ✔ Scrolls to load lazy content
+ * ✔ Scrapes bid and image URL
+ * ✔ Refines image formula to load correctly in Google Sheets
+ * ✔ Captures screenshot and logs HTML if no image is found
  */
 
 const puppeteer = require('puppeteer');
@@ -67,7 +67,7 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           console.log(`🌐 Row ${rowIndex}: visiting ${url}`);
           await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-          // 🔄 Scroll down to trigger lazy loading
+          // Scroll to bottom
           await page.evaluate(() => {
             return new Promise(resolve => {
               let totalHeight = 0;
@@ -87,40 +87,33 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           await page.waitForSelector(bidSelector, { timeout: 3000 });
           const bid = await page.$eval(bidSelector, el => el.textContent.trim());
 
-          // 👁️ Wait for image selectors (optional but helpful)
-          await page.waitForSelector('.fotorama__img, .product-image img', { timeout: 3000 }).catch(() => {
-            console.log(`⏳ Row ${rowIndex}: Image selector not detected after scroll`);
-          });
-
-          // 🖼️ Primary image selector
           let imageUrls = await page.$$eval(
             '.fotorama__stage__shaft img.fotorama__img',
             imgs => imgs.map(img => img.src)
           );
 
-          // 🖼️ Fallback selector
           if (imageUrls.length === 0) {
-            console.log(`🔁 Row ${rowIndex}: trying fallback selector`);
             imageUrls = await page.$$eval(
               '.product-image img',
               imgs => imgs.map(img => img.src)
             );
           }
 
-          // 🩺 If still no image, log nearby HTML
+          // Inspect fallback HTML if no image
           if (imageUrls.length === 0) {
             const rawHTML = await page.evaluate(() => {
               const gallery = document.querySelector('.product-image') || document.querySelector('.fotorama');
               return gallery ? gallery.innerHTML : '📭 No relevant gallery HTML found';
             });
-            console.log(`📜 Row ${rowIndex}: Gallery HTML fallback\n${rawHTML.slice(0, 500)}...`);
+            console.log(`📜 Row ${rowIndex}: Gallery HTML\n${rawHTML.slice(0, 500)}...`);
           }
 
-          // 📸 Screenshot for visual debugging
           await page.screenshot({ path: `row-${rowIndex}-screenshot.png` });
 
-          const imageFormula = imageUrls[0]
-            ? `=IMAGE("${imageUrls[0]}", 4, 60, 60)`
+          let imageUrl = imageUrls[0] || '';
+          imageUrl = imageUrl.split('?')[0]; // remove any query params
+          const imageFormula = imageUrl
+            ? `=IMAGE("${imageUrl}", 4, 60, 60)`
             : '';
 
           const duration = Date.now() - start;
@@ -129,12 +122,8 @@ keys.private_key = keys.private_key.replace(/\\n/g, '\n');
           console.log(`   - URL: ${url}`);
           console.log(`   - Bid found: ${bid || '❌ None'}`);
           console.log(`   - Images found: ${imageUrls.length}`);
-          if (imageUrls.length) {
-            console.log(`   - First image URL: ${imageUrls[0]}`);
-            console.log(`   - Thumbnail formula: ${imageFormula}`);
-          } else {
-            console.log('   - No image extracted (all methods failed)');
-          }
+          console.log(`   - First image URL: ${imageUrl}`);
+          console.log(`   - Thumbnail formula: ${imageFormula}`);
           console.log(`   - Duration: ${duration}ms\n`);
 
           return [
